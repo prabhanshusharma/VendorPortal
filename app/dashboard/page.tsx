@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import type { PurchaseOrder } from '@/lib/types';
 
-function getBadgeClass(status: string) {
+function getBadgeClass(status: string, rejected?: boolean) {
+  if (rejected) return 'badge badge-rejected';
   switch (status) {
     case 'Order Accepted': return 'badge badge-accepted';
     case 'Order Rejected': return 'badge badge-rejected';
@@ -15,7 +16,8 @@ function getBadgeClass(status: string) {
   }
 }
 
-function getDot(status: string) {
+function getDot(status: string, rejected?: boolean) {
+  if (rejected) return 'var(--danger)';
   const colors: Record<string, string> = {
     'Order Accepted': 'var(--info)',
     'Order Rejected': 'var(--danger)',
@@ -24,6 +26,11 @@ function getDot(status: string) {
     'Pending':        'var(--warning)',
   };
   return colors[status] ?? 'var(--warning)';
+}
+
+function getDisplayStatus(po: PurchaseOrder) {
+  if (po.vendor_rejected) return 'Rejected';
+  return po.delivery_status;
 }
 
 function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: React.ReactNode }) {
@@ -93,10 +100,11 @@ export default function DashboardPage() {
 
   const stats = {
     total:    pos.length,
-    pending:  pos.filter(p => p.delivery_status === 'Pending').length,
+    pending:  pos.filter(p => p.delivery_status === 'Pending' && !p.vendor_rejected).length,
     accepted: pos.filter(p => p.delivery_status === 'Order Accepted').length,
     shipped:  pos.filter(p => p.delivery_status === 'Shipped').length,
     delivered:pos.filter(p => p.delivery_status === 'Delivered').length,
+    rejected: pos.filter(p => p.vendor_rejected || p.delivery_status === 'Order Rejected').length,
   };
 
   return (
@@ -109,7 +117,7 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
-            Mehta Steel Suppliers Pvt. Ltd. — Purchase Orders Overview
+            Purchase Orders Overview
           </p>
         </div>
         <button
@@ -127,17 +135,19 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16, marginBottom: 32 }}>
         <StatCard label="Total POs" value={stats.total} color="var(--text-primary)"
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} />
-        <StatCard label="Pending Action" value={stats.pending} color="var(--warning)"
+        <StatCard label="Pending" value={stats.pending} color="var(--warning)"
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
-        <StatCard label="Order Accepted" value={stats.accepted} color="var(--accent)"
+        <StatCard label="Accepted" value={stats.accepted} color="var(--accent)"
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
         <StatCard label="Shipped" value={stats.shipped} color="var(--purple)"
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>} />
         <StatCard label="Delivered" value={stats.delivered} color="var(--success)"
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>} />
+        <StatCard label="Rejected" value={stats.rejected} color="var(--danger)"
+          icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 9l-6 6M9 9l6 6" /></svg>} />
       </div>
 
       {/* PO Table */}
@@ -170,6 +180,7 @@ export default function DashboardPage() {
                   <th>PO Number</th>
                   <th>SF Status</th>
                   <th>Delivery Status</th>
+                  <th>Products</th>
                   <th>Expected Delivery</th>
                   <th>Invoice</th>
                   <th>Last Updated</th>
@@ -177,48 +188,75 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {pos.map((po) => (
-                  <tr key={po.id} onClick={() => router.push(`/dashboard/${po.id}`)}>
-                    <td>
-                      <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{po.po_number}</span>
-                    </td>
-                    <td>
-                      <span className="badge badge-approved">{po.status}</span>
-                    </td>
-                    <td>
-                      <span className={getBadgeClass(po.delivery_status)}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: getDot(po.delivery_status), display: 'inline-block' }} />
-                        {po.delivery_status}
-                      </span>
-                    </td>
-                    <td style={{ color: po.expected_delivery_date ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                      {po.expected_delivery_date
-                        ? new Date(po.expected_delivery_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                        : '—'}
-                    </td>
-                    <td>
-                      {po.invoice_url
-                        ? <span style={{ color: 'var(--success)', fontSize: 12, fontWeight: 500 }}>✓ Uploaded</span>
-                        : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
-                    </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                      {new Date(po.updated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
-                    </td>
-                    <td>
-                      <button
-                        style={{
-                          padding: '5px 12px', borderRadius: 7,
-                          background: 'var(--accent-glow)', border: '1px solid var(--info-border)',
-                          color: 'var(--accent)', fontSize: 12, fontWeight: 600,
-                          cursor: 'pointer', fontFamily: 'inherit',
-                        }}
-                        onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/${po.id}`); }}
-                      >
-                        View →
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {pos.map((po) => {
+                  const lineItems = po.purchase_order_line_items ?? [];
+                  const productCount = lineItems.length;
+                  const productNames = lineItems
+                    .map(li => li.product_name)
+                    .filter(Boolean)
+                    .slice(0, 2);
+                  const displayStatus = getDisplayStatus(po);
+
+                  return (
+                    <tr key={po.id} onClick={() => router.push(`/dashboard/${po.id}`)}>
+                      <td>
+                        <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{po.po_number}</span>
+                      </td>
+                      <td>
+                        <span className="badge badge-approved">{po.status}</span>
+                      </td>
+                      <td>
+                        <span className={getBadgeClass(po.delivery_status, po.vendor_rejected)}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: getDot(po.delivery_status, po.vendor_rejected), display: 'inline-block' }} />
+                          {displayStatus}
+                        </span>
+                      </td>
+                      <td>
+                        {productCount > 0 ? (
+                          <div>
+                            <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                              {productNames.join(', ')}
+                              {productCount > 2 && (
+                                <span style={{ color: 'var(--text-muted)' }}> +{productCount - 2} more</span>
+                              )}
+                            </span>
+                            <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                              {productCount} item{productCount !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ color: po.expected_delivery_date ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {po.expected_delivery_date
+                          ? new Date(po.expected_delivery_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : '—'}
+                      </td>
+                      <td>
+                        {po.invoice_url
+                          ? <span style={{ color: 'var(--success)', fontSize: 12, fontWeight: 500 }}>✓ Uploaded</span>
+                          : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                        {new Date(po.updated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                      </td>
+                      <td>
+                        <button
+                          style={{
+                            padding: '5px 12px', borderRadius: 7,
+                            background: 'var(--accent-glow)', border: '1px solid var(--info-border)',
+                            color: 'var(--accent)', fontSize: 12, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                          onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/${po.id}`); }}
+                        >
+                          View →
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

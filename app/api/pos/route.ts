@@ -23,10 +23,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ pos: [] }); // No vendor yet, so no POs
     }
 
-    // Get the POs for this vendor
+    // Get the POs for this vendor with line items joined
     const { data: pos, error: posErr } = await supabase
       .from('purchase_orders')
-      .select('*')
+      .select('*, purchase_order_line_items(*)')
       .eq('vendor_id', vendor.id)
       .order('created_at', { ascending: false });
 

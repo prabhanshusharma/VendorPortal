@@ -24,10 +24,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Vendor not found' }, { status: 404 });
     }
 
-    // Get the specific PO
+    // Get the specific PO with line items
     const { data: po, error: poErr } = await supabase
       .from('purchase_orders')
-      .select('*')
+      .select('*, purchase_order_line_items(*)')
       .eq('id', id)
       .eq('vendor_id', vendor.id)
       .single();

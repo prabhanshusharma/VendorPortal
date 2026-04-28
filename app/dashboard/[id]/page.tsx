@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import type { PurchaseOrder, POLineItem } from '@/lib/types';
+import type { PurchaseOrder, PurchaseOrderLineItem } from '@/lib/types';
 
 function getBadgeClass(status: string) {
   switch (status) {
@@ -20,13 +20,12 @@ export default function PODetailPage() {
   const { id } = useParams<{ id: string }>();
 
   const [po, setPo] = useState<PurchaseOrder | null>(null);
-  const [lineItems, setLineItems] = useState<POLineItem[]>([]);
+  const [lineItems, setLineItems] = useState<PurchaseOrderLineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [expectedDate, setExpectedDate] = useState('');
-  const [newDeliveryStatus, setNewDeliveryStatus] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -43,24 +42,12 @@ export default function PODetailPage() {
       setAccessToken(session.access_token);
 
       const res = await fetch(`/api/pos/${id}`);
-      if (!res.ok) {
-        router.push('/dashboard');
-        return;
-      }
-      
+      if (!res.ok) { router.push('/dashboard'); return; }
+
       const { po: data } = await res.json();
       setPo(data);
       setExpectedDate(data.expected_delivery_date ?? '');
-      setNewDeliveryStatus(data.delivery_status);
-
-      // Fetch line items from SF
-      if (data.sf_po_id) {
-        const lineItemsRes = await fetch(`/api/fetch-line-items?sfPoId=${data.sf_po_id}`);
-        if (lineItemsRes.ok) {
-          const { lineItems: items } = await lineItemsRes.json();
-          setLineItems(items ?? []);
-        }
-      }
+      setLineItems(data.purchase_order_line_items ?? []);
     } catch (err) {
       console.error('Failed to load PO:', err);
       router.push('/dashboard');
@@ -71,21 +58,18 @@ export default function PODetailPage() {
 
   useEffect(() => { loadPO(); }, [loadPO]);
 
-  async function callUpdatePO(deliveryStatus: string, expDate?: string) {
+  async function callUpdatePO(deliveryStatus: string, expDate?: string, vendorRejected?: boolean) {
     setActionLoading(true);
     try {
       const body: Record<string, unknown> = { poId: id, deliveryStatus };
       if (expDate !== undefined) body.expectedDeliveryDate = expDate;
+      if (vendorRejected !== undefined) body.vendorRejected = vendorRejected;
 
       const res = await fetch('/api/update-po', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify(body),
       });
-
       if (!res.ok) throw new Error('Update failed');
       showToast('Updated successfully and synced to Salesforce ✓');
       await loadPO();
@@ -105,12 +89,11 @@ export default function PODetailPage() {
   }
 
   async function handleReject() {
-    await callUpdatePO('Order Rejected');
+    await callUpdatePO('Order Rejected', undefined, true);
   }
 
-  async function handleStatusUpdate() {
-    if (!newDeliveryStatus || newDeliveryStatus === po?.delivery_status) return;
-    await callUpdatePO(newDeliveryStatus, expectedDate || undefined);
+  async function handleShip() {
+    await callUpdatePO('Shipped', expectedDate || undefined);
   }
 
   async function handleInvoiceUpload() {
@@ -151,20 +134,14 @@ export default function PODetailPage() {
 
   if (!po) return null;
 
-  const isPending  = po.delivery_status === 'Pending';
+  const isPending  = po.delivery_status === 'Pending' && !po.vendor_rejected;
   const isAccepted = po.delivery_status === 'Order Accepted';
-  const isRejected = po.delivery_status === 'Order Rejected';
+  const isRejected = po.vendor_rejected || po.delivery_status === 'Order Rejected';
   const isShipped  = po.delivery_status === 'Shipped';
-  const canUpdateStatus = isAccepted || isShipped;
-
-  const allowedNextStatuses: string[] = isAccepted
-    ? ['Order Accepted', 'Shipped']
-    : isShipped
-    ? ['Shipped', 'Delivered']
-    : [];
+  const isDelivered = po.delivery_status === 'Delivered';
 
   return (
-    <div style={{ padding: '32px 32px 64px', maxWidth: 900, margin: '0 auto' }} className="animate-fade-in">
+    <div style={{ padding: '32px 32px 64px', maxWidth: 960, margin: '0 auto' }} className="animate-fade-in">
 
       {/* Toast */}
       {toast && (
@@ -174,22 +151,18 @@ export default function PODetailPage() {
           background: toast.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
           border: `1px solid ${toast.type === 'success' ? 'var(--success-border)' : 'var(--danger-border)'}`,
           color: toast.type === 'success' ? 'var(--success)' : 'var(--danger)',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
-          animation: 'fadeIn 0.3s ease',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.3)', animation: 'fadeIn 0.3s ease',
         }}>
           {toast.msg}
         </div>
       )}
 
       {/* Back */}
-      <button
-        onClick={() => router.push('/dashboard')}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          color: 'var(--text-muted)', background: 'none', border: 'none',
-          cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', marginBottom: 24,
-          transition: 'color 0.15s',
-        }}
+      <button onClick={() => router.push('/dashboard')} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        color: 'var(--text-muted)', background: 'none', border: 'none',
+        cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', marginBottom: 24, transition: 'color 0.15s',
+      }}
         onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
         onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
       >
@@ -204,10 +177,10 @@ export default function PODetailPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                {po.po_number}
-              </h1>
-              <span className={getBadgeClass(po.delivery_status)}>{po.delivery_status}</span>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{po.po_number}</h1>
+              <span className={getBadgeClass(isRejected ? 'Order Rejected' : po.delivery_status)}>
+                {isRejected ? 'Rejected' : po.delivery_status}
+              </span>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
               Salesforce ID: <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{po.sf_po_id}</span>
@@ -233,7 +206,7 @@ export default function PODetailPage() {
       </div>
 
       {/* Vendor Action Panel */}
-      {!isRejected && (
+      {!isRejected && !isDelivered && (
         <div className="card" style={{ padding: '24px 28px', marginBottom: 20 }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
@@ -252,15 +225,10 @@ export default function PODetailPage() {
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
                     Expected Delivery Date *
                   </label>
-                  <input
-                    id="expected-date"
-                    type="date"
-                    className="input"
-                    value={expectedDate}
+                  <input id="expected-date" type="date" className="input" value={expectedDate}
                     min={new Date().toISOString().split('T')[0]}
                     onChange={(e) => setExpectedDate(e.target.value)}
-                    style={{ colorScheme: 'dark' }}
-                  />
+                    style={{ colorScheme: 'dark' }} />
                 </div>
                 <button id="accept-btn" onClick={handleAccept} disabled={actionLoading} className="btn-success">
                   {actionLoading ? '…' : '✓ Accept Order'}
@@ -272,68 +240,54 @@ export default function PODetailPage() {
             </div>
           )}
 
-          {canUpdateStatus && (
+          {isAccepted && (
             <div>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Update the delivery progress for this order. Changes sync to Salesforce immediately.
+                Order accepted. You can now mark it as shipped when ready.
               </p>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ flex: '0 0 220px' }}>
+                <div style={{ flex: '0 0 200px' }}>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-                    Delivery Status
+                    Expected Delivery Date
                   </label>
-                  <select
-                    id="delivery-status-select"
-                    className="input"
-                    value={newDeliveryStatus}
-                    onChange={(e) => setNewDeliveryStatus(e.target.value)}
-                    style={{ colorScheme: 'dark', cursor: 'pointer' }}
-                  >
-                    {allowedNextStatuses.map((s) => (
-                      <option key={s} value={s} style={{ background: 'var(--bg-secondary)' }}>{s}</option>
-                    ))}
-                  </select>
+                  <input type="date" className="input" value={expectedDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setExpectedDate(e.target.value)}
+                    style={{ colorScheme: 'dark' }} />
                 </div>
-                {isAccepted && (
-                  <div style={{ flex: '0 0 200px' }}>
-                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-                      Expected Delivery Date
-                    </label>
-                    <input
-                      type="date"
-                      className="input"
-                      value={expectedDate}
-                      min={new Date().toISOString().split('T')[0]}
-                      onChange={(e) => setExpectedDate(e.target.value)}
-                      style={{ colorScheme: 'dark' }}
-                    />
-                  </div>
-                )}
-                <button
-                  id="update-status-btn"
-                  onClick={handleStatusUpdate}
-                  disabled={actionLoading || newDeliveryStatus === po.delivery_status}
-                  className="btn-primary"
-                >
-                  {actionLoading ? '…' : 'Update Status'}
+                <button id="ship-btn" onClick={handleShip} disabled={actionLoading} className="btn-primary" style={{ gap: 6 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
+                  </svg>
+                  {actionLoading ? '…' : 'Mark as Shipped'}
                 </button>
               </div>
             </div>
           )}
 
-          {po.delivery_status === 'Delivered' && (
+          {isShipped && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '14px 18px', borderRadius: 10,
-              background: 'var(--success-bg)', border: '1px solid var(--success-border)',
-              color: 'var(--success)',
+              background: 'var(--purple-bg)', border: '1px solid var(--purple-border)', color: 'var(--purple)',
             }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
               </svg>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>This order has been delivered successfully.</span>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>Order shipped — awaiting delivery confirmation from buyer.</span>
             </div>
           )}
+        </div>
+      )}
+
+      {isDelivered && (
+        <div className="card" style={{ padding: '20px 28px', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderRadius: 10, background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--success)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>This order has been delivered successfully.</span>
+          </div>
         </div>
       )}
 
@@ -344,7 +298,7 @@ export default function PODetailPage() {
               <circle cx="12" cy="12" r="10" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l-6 6M9 9l6 6" />
             </svg>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>You have rejected this purchase order.</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>This purchase order has been rejected.</span>
           </div>
         </div>
       )}
@@ -357,18 +311,10 @@ export default function PODetailPage() {
           </svg>
           Invoice
         </h2>
-
         {po.invoice_url && (
           <div style={{ marginBottom: 16 }}>
-            <a
-              href={po.invoice_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                color: 'var(--success)', fontSize: 13, fontWeight: 600, textDecoration: 'none',
-              }}
-            >
+            <a href={po.invoice_url} target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--success)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
@@ -376,25 +322,14 @@ export default function PODetailPage() {
             </a>
           </div>
         )}
-
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <label
-            htmlFor="invoice-file"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '9px 16px', borderRadius: 9,
-              border: '1px dashed var(--border-light)',
-              color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
-              cursor: 'pointer', transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)';
-              (e.currentTarget as HTMLElement).style.color = 'var(--accent)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)';
-              (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
-            }}
+          <label htmlFor="invoice-file" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '9px 16px', borderRadius: 9, border: '1px dashed var(--border-light)',
+            color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
+          }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -402,12 +337,7 @@ export default function PODetailPage() {
             {po.invoice_url ? 'Replace Invoice' : 'Choose Invoice File'}
             <input id="invoice-file" type="file" accept=".pdf,.png,.jpg,.jpeg" ref={fileRef} style={{ display: 'none' }} />
           </label>
-          <button
-            id="upload-invoice-btn"
-            onClick={handleInvoiceUpload}
-            disabled={uploadLoading}
-            className="btn-ghost"
-          >
+          <button id="upload-invoice-btn" onClick={handleInvoiceUpload} disabled={uploadLoading} className="btn-ghost">
             {uploadLoading ? (
               <>
                 <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -425,41 +355,48 @@ export default function PODetailPage() {
       </div>
 
       {/* Line Items */}
-      {lineItems.length > 0 && (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              Line Items
-            </h2>
-          </div>
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Order Items</h2>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{lineItems.length} item{lineItems.length !== 1 ? 's' : ''}</span>
+        </div>
+        {lineItems.length > 0 ? (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Item #</th>
+                <th>#</th>
                 <th>Product</th>
-                <th style={{ textAlign: 'right' }}>Quantity</th>
+                <th>Item Name</th>
+                <th style={{ textAlign: 'right' }}>Qty</th>
+                <th style={{ textAlign: 'right' }}>Qty Ordered</th>
+                <th style={{ textAlign: 'right' }}>Qty Received</th>
+                <th>UOM</th>
                 <th style={{ textAlign: 'right' }}>Unit Price</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
               </tr>
             </thead>
             <tbody>
               {lineItems.map((item, idx) => (
-                <tr key={item.Id} style={{ cursor: 'default' }}>
+                <tr key={item.id} style={{ cursor: 'default' }}>
                   <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>{idx + 1}</td>
-                  <td style={{ fontWeight: 500 }}>{item.Product__r?.Name ?? item.Name ?? '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{item.Quantity__c?.toLocaleString('en-IN') ?? '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    {item.Unit_Price__c != null ? `₹${item.Unit_Price__c.toLocaleString('en-IN')}` : '—'}
-                  </td>
+                  <td style={{ fontWeight: 500 }}>{item.product_name ?? '—'}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{item.name ?? '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{item.quantity?.toLocaleString('en-IN') ?? '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{item.quantity_ordered?.toLocaleString('en-IN') ?? '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{item.quantity_received?.toLocaleString('en-IN') ?? '—'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{item.uom ?? '—'}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--accent)' }}>
-                    {item.Total_Price__c != null ? `₹${item.Total_Price__c.toLocaleString('en-IN')}` : '—'}
+                    {item.unit_price != null ? `₹${item.unit_price.toLocaleString('en-IN')}` : '—'}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
+        ) : (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+            No line items found for this purchase order.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

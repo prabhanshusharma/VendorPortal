@@ -6,6 +6,7 @@ interface UpdatePayload {
   poId: string; // Supabase UUID
   deliveryStatus: string;
   expectedDeliveryDate?: string | null;
+  vendorRejected?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -34,10 +35,15 @@ export async function POST(req: NextRequest) {
 
     // ── Parse body ───────────────────────────────────────────────────────────
     const body: UpdatePayload = await req.json();
-    const { poId, deliveryStatus, expectedDeliveryDate } = body;
+    const { poId, deliveryStatus, expectedDeliveryDate, vendorRejected } = body;
 
     if (!poId || !deliveryStatus) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    }
+
+    // ── Vendor cannot set status to Delivered ─────────────────────────────────
+    if (deliveryStatus === 'Delivered') {
+      return NextResponse.json({ error: 'Vendors cannot mark orders as Delivered' }, { status: 403 });
     }
 
     // ── Verify vendor mapping ────────────────────────────────────────────────
@@ -73,6 +79,9 @@ export async function POST(req: NextRequest) {
     if (expectedDeliveryDate !== undefined) {
       updates.expected_delivery_date = expectedDeliveryDate;
     }
+    if (vendorRejected !== undefined) {
+      updates.vendor_rejected = vendorRejected;
+    }
 
     await supabase.from('purchase_orders').update(updates).eq('id', poId);
 
@@ -80,10 +89,17 @@ export async function POST(req: NextRequest) {
     const conn = await getSFConnection();
     const sfUpdates: { Id: string; [key: string]: unknown } = {
       Id: po.sf_po_id,
-      Vendor_Delivery_Status__c: deliveryStatus,
     };
+
+    if (!vendorRejected) {
+      sfUpdates.Vendor_Delivery_Status__c = deliveryStatus;
+    }
+
     if (expectedDeliveryDate) {
       sfUpdates.Expected_Delivery_Date__c = expectedDeliveryDate;
+    }
+    if (vendorRejected) {
+      sfUpdates.Vendor_Rejected__c = true;
     }
 
     await conn.sobject('Purchase_Order__c').update(sfUpdates);
