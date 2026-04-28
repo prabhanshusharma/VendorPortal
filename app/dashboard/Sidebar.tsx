@@ -155,7 +155,7 @@ export default function Sidebar({ vendor }: { vendor: Vendor | null }) {
             marginBottom: 12,
           }}>
             <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {vendor.company_name}
+              {vendor.company_name.replace(/[—-]/g, '').replace(/\s+/g, ' ').trim()}
             </p>
             <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {vendor.email}

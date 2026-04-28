@@ -304,55 +304,61 @@ export default function PODetailPage() {
       )}
 
       {/* Invoice Upload */}
-      <div className="card" style={{ padding: '24px 28px', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Invoice
-        </h2>
-        {po.invoice_url && (
-          <div style={{ marginBottom: 16 }}>
-            <a href={po.invoice_url} target="_blank" rel="noopener noreferrer"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--success)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              View Uploaded Invoice
-            </a>
-          </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <label htmlFor="invoice-file" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '9px 16px', borderRadius: 9, border: '1px dashed var(--border-light)',
-            color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
-          }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+      {(!isRejected || po.invoice_url) && (
+        <div className="card" style={{ padding: '24px 28px', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            {po.invoice_url ? 'Replace Invoice' : 'Choose Invoice File'}
-            <input id="invoice-file" type="file" accept=".pdf,.png,.jpg,.jpeg" ref={fileRef} style={{ display: 'none' }} />
-          </label>
-          <button id="upload-invoice-btn" onClick={handleInvoiceUpload} disabled={uploadLoading} className="btn-ghost">
-            {uploadLoading ? (
-              <>
-                <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25" />
-                  <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+            Invoice
+          </h2>
+          {po.invoice_url && (
+            <div style={{ marginBottom: 16 }}>
+              <a href={po.invoice_url} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--success)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
-                Uploading…
-              </>
-            ) : 'Upload Invoice'}
-          </button>
+                View Uploaded Invoice
+              </a>
+            </div>
+          )}
+          {!isRejected && !po.invoice_url && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <label htmlFor="invoice-file" style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '9px 16px', borderRadius: 9, border: '1px dashed var(--border-light)',
+                  color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
+                }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-light)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Choose Invoice File
+                  <input id="invoice-file" type="file" accept=".pdf,.png,.jpg,.jpeg" ref={fileRef} style={{ display: 'none' }} />
+                </label>
+                <button id="upload-invoice-btn" onClick={handleInvoiceUpload} disabled={uploadLoading} className="btn-ghost">
+                  {uploadLoading ? (
+                    <>
+                      <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25" />
+                        <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                      </svg>
+                      Uploading…
+                    </>
+                  ) : 'Upload Invoice'}
+                </button>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '10px 0 0' }}>
+                PDF, PNG or JPG. Invoice will be attached to the SF Purchase Order record.
+              </p>
+            </>
+          )}
         </div>
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '10px 0 0' }}>
-          PDF, PNG or JPG. Invoice will be attached to the SF Purchase Order record.
-        </p>
-      </div>
+      )}
 
       {/* Line Items */}
       <div className="card" style={{ overflow: 'hidden' }}>

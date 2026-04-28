@@ -251,7 +251,7 @@ export default function DashboardPage() {
                           }}
                           onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/${po.id}`); }}
                         >
-                          View →
+                          View
                         </button>
                       </td>
                     </tr>
