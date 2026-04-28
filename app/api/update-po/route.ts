@@ -40,12 +40,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
 
-    // ── Verify this PO belongs to the user (vendor_id = user.id) ─────────────
+    // ── Verify vendor mapping ────────────────────────────────────────────────
+    const { data: vendor, error: vendorErr } = await supabase
+      .from('vendors')
+      .select('id')
+      .eq('email', finalUser.email)
+      .single();
+
+    if (vendorErr || !vendor) {
+      console.error('[update-po] Vendor not found:', vendorErr);
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 });
+    }
+
+    // ── Verify this PO belongs to the user (vendor_id = vendor.id) ───────────
     const { data: po, error: poErr } = await supabase
       .from('purchase_orders')
       .select('id, sf_po_id, vendor_id')
       .eq('id', poId)
-      .eq('vendor_id', finalUser.id)
+      .eq('vendor_id', vendor.id)
       .single();
 
     if (poErr || !po) {
@@ -66,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     // ── Write back to Salesforce ──────────────────────────────────────────────
     const conn = await getSFConnection();
-    const sfUpdates: Record<string, unknown> = {
+    const sfUpdates: { Id: string; [key: string]: unknown } = {
       Id: po.sf_po_id,
       Vendor_Delivery_Status__c: deliveryStatus,
     };

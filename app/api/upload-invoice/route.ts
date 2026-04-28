@@ -33,12 +33,24 @@ export async function POST(req: NextRequest) {
 
     if (!file || !poId) return NextResponse.json({ error: 'Missing file or poId' }, { status: 400 });
 
-    // ── Get PO and verify ownership (vendor_id = user.id) ────────────────────
+    // ── Verify vendor mapping ────────────────────────────────────────────────
+    const { data: vendor, error: vendorErr } = await supabase
+      .from('vendors')
+      .select('id')
+      .eq('email', finalUser.email)
+      .single();
+
+    if (vendorErr || !vendor) {
+      console.error('[upload-invoice] Vendor not found:', vendorErr);
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 });
+    }
+
+    // ── Get PO and verify ownership (vendor_id = vendor.id) ──────────────────
     const { data: po } = await supabase
       .from('purchase_orders')
       .select('id, sf_po_id, po_number, vendor_id')
       .eq('id', poId)
-      .eq('vendor_id', finalUser.id)
+      .eq('vendor_id', vendor.id)
       .single();
 
     if (!po) {

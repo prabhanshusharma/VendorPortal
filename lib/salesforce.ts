@@ -1,4 +1,4 @@
-import jsforce from 'jsforce';
+import * as jsforce from 'jsforce';
 
 let _conn: jsforce.Connection | null = null;
 
